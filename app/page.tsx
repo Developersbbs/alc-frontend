@@ -3,8 +3,8 @@ import React, { useState } from "react";
 import { Sparkles } from "lucide-react";
 
 // Components
-import Footer from "@/app/components/custom/footer";
-import Header from "@/app/components/custom/header";
+import Footer from "./components/custom/footer";
+import Header from "./components/custom/header";
 import UploadArea from "./components/custom/UploadArea";
 import InstructionsPanel from "./components/custom/InstructionsPanel";
 import ColorPickerMagnifier from "./components/custom/ColorPickerMagnifier";
