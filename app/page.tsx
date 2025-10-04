@@ -116,6 +116,10 @@ export default function Home() {
   const [hairTypeOpen, setHairTypeOpen] = useState<boolean>(false);
   const [isMainGenerating, setIsMainGenerating] = useState<boolean>(false);
   const [mainGenerationProgress, setMainGenerationProgress] = useState<string>("");
+  const [isGenerating3M, setIsGenerating3M] = useState<boolean>(false);
+  const [isGenerating8M, setIsGenerating8M] = useState<boolean>(false);
+  const [generationProgress3M, setGenerationProgress3M] = useState<string>("");
+  const [generationProgress8M, setGenerationProgress8M] = useState<string>("");
 
   // Face detection function
   const detectFace = async (imageFile: File, imageIndex: number): Promise<FaceDetectionResult> => {
@@ -313,125 +317,211 @@ export default function Home() {
                 </div>
               )}
 
-              <button
-                className={`w-full rounded-full font-bold text-base py-2.5 sm:py-3 flex items-center justify-center gap-2 text-black transition-all ${
-                  canGenerate && !isMainGenerating
-                    ? "bg-[#F9D50A] hover:bg-yellow-300"
-                    : "bg-gray-600 cursor-not-allowed"
-                }`}
-                disabled={!canGenerate || isMainGenerating}
-                onClick={async () => {
-                  if (selectedImageIndex === null) return;
-                  
-                  try {
-                    setIsMainGenerating(true);
-                    setMainGenerationProgress("Preparing generation...");
-                    
-                    // Prepare minimal data for generation using saved patterns
-                    const formData = new FormData();
-                    
-                    // Add the original image
-                    const selectedImage = images[selectedImageIndex];
-                    if (selectedImage?.src) {
-                      setMainGenerationProgress("Loading image...");
-                      const response = await fetch(selectedImage.src);
-                      const blob = await response.blob();
-                      formData.append("image", blob, "original_image.jpg");
-                    }
-                    
-                    // Add current settings
-                    const settings = getCurrentImageSettings();
-                    formData.append("hair_color", settings.hairColor || "#000000");
-                    formData.append("hair_type", settings.hairType || "Straight Hair");
-                    formData.append("hair_line_type", settings.hairLineType || "Hairline");
-                    formData.append("hair_density_3m", (settings.hairDensity3M || 0.7).toString());
-                    formData.append("hair_density_8m", (settings.hairDensity8M || 0.9).toString());
-                    formData.append("timeframe", settings.densityTimeframe || "3months");
-                    formData.append("use_saved_pattern", "true");
-                    formData.append("face_detected", (currentFaceDetection?.face_detection?.face_detected || false).toString());
-                    
-                    console.log("Generating with saved pattern from main button");
-                    
-                    // Update progress based on mode
-                    if (settings.hairLineType === "Hairline") {
-                      setMainGenerationProgress("Generating hair growth...");
-                    } else {
-                      setMainGenerationProgress("Generating hair growth...");
-                    }
-                    
-                    // Send to generate endpoint with saved pattern
-                    const response = await fetch("http://localhost:8000/generate-with-saved-pattern", {
-                      method: "POST",
-                      body: formData
-                    });
-                    
-                    if (!response.ok) {
-                      const errorText = await response.text();
-                      throw new Error(`Generation failed: ${response.status} ${response.statusText} - ${errorText}`);
-                    }
-                    
-                    setMainGenerationProgress("Processing results...");
-                    const result = await response.json();
-                    console.log("Generation successful:", result);
-                    
-                    // Handle results - for Hairline mode, we get both timeframes
-                    if (result.has_both_timeframes && result.image_3months && result.image_8months) {
-                      setMainGenerationProgress("Updating both timeframes...");
-                      // Update image with both timeframes
-                      updateImageWithGeneration(selectedImageIndex, "3 Months", result.image_3months);
-                      updateImageWithGeneration(selectedImageIndex, "8 Months", result.image_8months);
-                      
-                      // Show results
-                      setShowResults(true);
-                      setSelectedResultImage({
-                        ...images[selectedImageIndex],
-                        generatedImage3Months: `data:image/png;base64,${result.image_3months}`,
-                        generatedImage8Months: `data:image/png;base64,${result.image_8months}`
+              <div className="flex gap-2">
+                <button
+                  className={`flex-1 rounded-full font-bold text-sm py-2.5 sm:py-3 flex items-center justify-center gap-2 text-black transition-all ${
+                    canGenerate && !isGenerating3M
+                      ? "bg-[#F9D50A] hover:bg-yellow-300"
+                      : "bg-gray-600 cursor-not-allowed"
+                  }`}
+                  disabled={!canGenerate || isGenerating3M}
+                  onClick={async () => {
+                    if (selectedImageIndex === null) return;
+
+                    try {
+                      setIsGenerating3M(true);
+                      setGenerationProgress3M("Preparing 3-month generation...");
+
+                      // Prepare data for 3-month generation
+                      const formData = new FormData();
+
+                      // Add the original image
+                      const selectedImage = images[selectedImageIndex];
+                      if (selectedImage?.src) {
+                        setGenerationProgress3M("Loading image...");
+                        const response = await fetch(selectedImage.src);
+                        const blob = await response.blob();
+                        formData.append("image", blob, "original_image.jpg");
+                      }
+
+                      // Add current settings
+                      const settings = getCurrentImageSettings();
+                      formData.append("hair_color", settings.hairColor || "#000000");
+                      formData.append("hair_type", settings.hairType || "Straight Hair");
+                      formData.append("hair_line_type", settings.hairLineType || "Hairline");
+                      formData.append("hair_density_3m", (settings.hairDensity3M || 0.7).toString());
+                      formData.append("face_detected", (currentFaceDetection?.face_detection?.face_detected || false).toString());
+                      formData.append("use_saved_pattern", "true");
+
+                      console.log("Generating 3-month result");
+
+                      setGenerationProgress3M("Generating 3-month hair growth...");
+
+                      // Send to 3-month endpoint
+                      const response = await fetch("http://localhost:8000/generate-3months", {
+                        method: "POST",
+                        body: formData
                       });
-                      setSelectedTimeframe("3 Months");
-                    } else {
-                      setMainGenerationProgress("Updating results...");
-                      // Single timeframe result
-                      const timeframeForUpdate = settings.densityTimeframe === "3months" ? "3 Months" : "8 Months";
-                      updateImageWithGeneration(selectedImageIndex, timeframeForUpdate, result.image);
-                      
-                      setShowResults(true);
-                      setSelectedResultImage({
-                        ...images[selectedImageIndex],
-                        generatedImage3Months: settings.densityTimeframe === "3months" ? `data:image/png;base64,${result.image}` : images[selectedImageIndex].generatedImage3Months,
-                        generatedImage8Months: settings.densityTimeframe === "8months" ? `data:image/png;base64,${result.image}` : images[selectedImageIndex].generatedImage8Months
-                      });
-                      setSelectedTimeframe(timeframeForUpdate);
+
+                      if (!response.ok) {
+                        const errorText = await response.text();
+                        throw new Error(`3-month generation failed: ${response.status} ${response.statusText} - ${errorText}`);
+                      }
+
+                      setGenerationProgress3M("Processing 3-month results...");
+                      const result = await response.json();
+                      console.log("3-month generation successful:", result);
+
+                      // Debug: Log the result to check if image data is present
+                      console.log("3-month result image data length:", result.image ? result.image.length : "No image data");
+                      if (result.image) {
+                        console.log("3-month image preview:", result.image.substring(0, 50) + "...");
+                      }
+
+                      // Update image with 3-month result
+                      updateImageWithGeneration(selectedImageIndex, "3 Months", result.image);
+
+                      // Show results if not already shown
+                      if (!showResults) {
+                        setShowResults(true);
+                        setSelectedResultImage({
+                          ...images[selectedImageIndex],
+                          generatedImage3Months: `data:image/png;base64,${result.image}`,
+                          generatedImage8Months: images[selectedImageIndex]?.generatedImage8Months || null
+                        });
+                        setSelectedTimeframe("3 Months");
+                      } else {
+                        // If results are already shown, update the existing selectedResultImage
+                        setSelectedResultImage(prev => prev ? {
+                          ...prev,
+                          generatedImage3Months: `data:image/png;base64,${result.image}`
+                        } : null);
+                      }
+
+                    } catch (error) {
+                      console.error("3-month generation error:", error);
+                      alert(`Error generating 3-month hair: ${(error as Error).message}`);
+                    } finally {
+                      setIsGenerating3M(false);
+                      setGenerationProgress3M("");
                     }
-                    
-                  } catch (error) {
-                    console.error("Generation error:", error);
-                    alert(`Error generating hair: ${(error as Error).message}`);
-                  } finally {
-                    setIsMainGenerating(false);
-                    setMainGenerationProgress("");
-                  }
-                }}
-              >
-                {isMainGenerating ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin"></div>
-                    {mainGenerationProgress || "Generating..."}
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-4 h-4" />
-                    {selectedImageIndex === null
-                      ? "Select an Image First"
-                      : images[selectedImageIndex]?.status !== "valid"
-                      ? "Invalid Image Selected"
-                      : images[selectedImageIndex]?.settings.isFreeMark &&
-                        !images[selectedImageIndex]?.settings.hasDrawing
-                      ? "Draw & Save Settings First"
-                      : "Generate Hair Growth"}
-                  </>
-                )}
-              </button>
+                  }}
+                >
+                  {isGenerating3M ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin"></div>
+                      {generationProgress3M || "Generating 3M..."}
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4" />
+                      Generate 3 Months
+                    </>
+                  )}
+                </button>
+
+                <button
+                  className={`flex-1 rounded-full font-bold text-sm py-2.5 sm:py-3 flex items-center justify-center gap-2 text-black transition-all ${
+                    canGenerate && !isGenerating8M
+                      ? "bg-[#F9D50A] hover:bg-yellow-300"
+                      : "bg-gray-600 cursor-not-allowed"
+                  }`}
+                  disabled={!canGenerate || isGenerating8M}
+                  onClick={async () => {
+                    if (selectedImageIndex === null) return;
+
+                    try {
+                      setIsGenerating8M(true);
+                      setGenerationProgress8M("Preparing 8-month generation...");
+
+                      // Prepare data for 8-month generation
+                      const formData = new FormData();
+
+                      // Add the original image
+                      const selectedImage = images[selectedImageIndex];
+                      if (selectedImage?.src) {
+                        setGenerationProgress8M("Loading image...");
+                        const response = await fetch(selectedImage.src);
+                        const blob = await response.blob();
+                        formData.append("image", blob, "original_image.jpg");
+                      }
+
+                      // Add current settings
+                      const settings = getCurrentImageSettings();
+                      formData.append("hair_color", settings.hairColor || "#000000");
+                      formData.append("hair_type", settings.hairType || "Straight Hair");
+                      formData.append("hair_line_type", settings.hairLineType || "Hairline");
+                      formData.append("hair_density_8m", (settings.hairDensity8M || 0.9).toString());
+                      formData.append("face_detected", (currentFaceDetection?.face_detection?.face_detected || false).toString());
+                      formData.append("use_saved_pattern", "true");
+
+                      console.log("Generating 8-month result");
+
+                      setGenerationProgress8M("Generating 8-month hair growth...");
+
+                      // Send to 8-month endpoint
+                      const response = await fetch("http://localhost:8000/generate-8months", {
+                        method: "POST",
+                        body: formData
+                      });
+
+                      if (!response.ok) {
+                        const errorText = await response.text();
+                        throw new Error(`8-month generation failed: ${response.status} ${response.statusText} - ${errorText}`);
+                      }
+
+                      setGenerationProgress8M("Processing 8-month results...");
+                      const result = await response.json();
+                      console.log("8-month generation successful:", result);
+
+                      // Debug: Log the result to check if image data is present
+                      console.log("8-month result image data length:", result.image ? result.image.length : "No image data");
+                      if (result.image) {
+                        console.log("8-month image preview:", result.image.substring(0, 50) + "...");
+                      }
+
+                      // Update image with 8-month result
+                      updateImageWithGeneration(selectedImageIndex, "8 Months", result.image);
+
+                      // Show results if not already shown
+                      if (!showResults) {
+                        setShowResults(true);
+                        setSelectedResultImage({
+                          ...images[selectedImageIndex],
+                          generatedImage3Months: images[selectedImageIndex]?.generatedImage3Months || null,
+                          generatedImage8Months: `data:image/png;base64,${result.image}`
+                        });
+                        setSelectedTimeframe("8 Months");
+                      } else {
+                        // If results are already shown, update the existing selectedResultImage
+                        setSelectedResultImage(prev => prev ? {
+                          ...prev,
+                          generatedImage8Months: `data:image/png;base64,${result.image}`
+                        } : null);
+                      }
+
+                    } catch (error) {
+                      console.error("8-month generation error:", error);
+                      alert(`Error generating 8-month hair: ${(error as Error).message}`);
+                    } finally {
+                      setIsGenerating8M(false);
+                      setGenerationProgress8M("");
+                    }
+                  }}
+                >
+                  {isGenerating8M ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin"></div>
+                      {generationProgress8M || "Generating 8M..."}
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4" />
+                      Generate 8 Months
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
 

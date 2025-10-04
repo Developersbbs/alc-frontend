@@ -309,7 +309,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     const hairType = currentSettings.enhancedHairTexture ? 
       currentSettings.enhancedHairTexture.charAt(0).toUpperCase() + currentSettings.enhancedHairTexture.slice(1) + ' Hair' : 
       "Straight Hair";
-    const hairLineType = currentSettings.isFreeMark ? "FreeMark" : "Hairline";
+    
+    // CORRECTED: Send the actual selected pattern type
+    const hairLineType = currentSettings.isFreeMark ? "FreeMark" : (currentSettings.hairLineType || "Hairline");
     const density3M = currentSettings.hairDensity3M || 0.7;
     const density8M = currentSettings.hairDensity8M || 0.9;
     const timeframe = currentSettings.densityTimeframe || "3months";
@@ -330,13 +332,13 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     formData.append("timeframe", timeframe);
     formData.append("face_detected", faceDetected.toString());
   
-    // Handle Hairline mode - capture pattern image as mask
+    // Handle Hairline mode - send hairline pattern if applicable
     if (!currentSettings.isFreeMark) {
       const hairlinePattern = currentSettings.hairlineDesign || "M Pattern";
       console.log("  - Hairline Pattern:", hairlinePattern);
       formData.append("hairline_pattern", hairlinePattern);
       
-      // ENHANCED: Capture the current hairline pattern image as mask
+      // For hairline patterns, send the pattern image as mask if available
       try {
         console.log("Looking for hairline pattern canvas...");
         const patternCanvas = document.querySelector('canvas[data-hairline-pattern="true"]') as HTMLCanvasElement;
