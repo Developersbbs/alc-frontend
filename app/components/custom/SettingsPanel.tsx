@@ -1495,20 +1495,13 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   try {
     setIsGenerating(true);  // Set loading state to true before saving
 
-    // Capture current canvas data for FreeMark mode
-    if (currentSettings.isFreeMark) {
-      console.log("🔄 SAVE: Starting canvas capture for current timeframe...");
-      captureCanvasDataEnhanced();
-      await new Promise(resolve => setTimeout(resolve, 300)); // Increased delay
-      console.log("✅ SAVE: FreeMark canvas capture completed - proceeding with save");
-
-      // Debug: Check what data we have after capture
-      console.log("🔍 SAVE: Current settings after capture:");
-      console.log("  - canvasDrawing_3months:", currentSettings.canvasDrawing_3months ? "EXISTS" : "MISSING");
-      console.log("  - canvasDrawing_8months:", currentSettings.canvasDrawing_8months ? "EXISTS" : "MISSING");
-      console.log("  - canvasDrawing_3months_original:", currentSettings.canvasDrawing_3months_original ? "EXISTS" : "MISSING");
-      console.log("  - canvasDrawing_8months_original:", currentSettings.canvasDrawing_8months_original ? "EXISTS" : "MISSING");
-    }
+    // Debug: Check what data we have before preparing submission
+    console.log("🔍 SAVE: Current settings before submission:");
+    console.log("  - canvasDrawing_3months:", currentSettings.canvasDrawing_3months ? "EXISTS" : "MISSING");
+    console.log("  - canvasDrawing_8months:", currentSettings.canvasDrawing_8months ? "EXISTS" : "MISSING");
+    console.log("  - canvasDrawing_3months_original:", currentSettings.canvasDrawing_3months_original ? "EXISTS" : "MISSING");
+    console.log("  - canvasDrawing_8months_original:", currentSettings.canvasDrawing_8months_original ? "EXISTS" : "MISSING");
+    console.log("  - Current timeframe:", currentSettings.densityTimeframe || "3months");
 
     // Prepare submission data
     const submissionData = await prepareSubmissionData();
