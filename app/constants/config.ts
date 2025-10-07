@@ -17,6 +17,8 @@ export const API_CONFIG = {
   ENDPOINTS: {
     HEALTH: "/health",
     GENERATE_INDIVIDUAL: "/generate/individual",
+    GENERATE_3MONTHS: "/generate-3months",
+    GENERATE_8MONTHS: "/generate-8months",
   },
 };
 

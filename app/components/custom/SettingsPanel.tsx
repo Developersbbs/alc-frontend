@@ -137,11 +137,11 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         newData[i + 2] = 255; // Blue
         newData[i + 3] = 255; // Alpha (fully opaque)
       } else {
-        // Keep transparent (black background)
+        // Keep transparent (black background with transparent alpha)
         newData[i] = 0; // Red
         newData[i + 1] = 0; // Green
         newData[i + 2] = 0; // Blue
-        newData[i + 3] = 255; // Alpha (opaque black)
+        newData[i + 3] = 0; // Alpha (fully transparent)
       }
     }
 
@@ -164,7 +164,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         const whiteMaskDataURL = convertToWhiteMask(canvas);
 
         const timeframe = currentSettings.densityTimeframe || "3months";
-        const currentBrushDensity = currentSettings.brushDensity || 25; // Current density from slider
+        const currentBrushDensity = getCurrentDensity(); // Use the getCurrentDensity function
 
         updateCurrentImageSettings({
           [`canvasDrawing_${timeframe}`]: whiteMaskDataURL, // For backend
@@ -290,11 +290,95 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     return new Blob([u8arr], { type: mime });
   };
 
+  // Create combined image (original + green mask overlay)
+  const createCombinedImage = async (maskCanvas: HTMLCanvasElement | null, maskDataURL?: string): Promise<Blob> => {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    if (!ctx) {
+      throw new Error("Failed to create canvas context");
+    }
+
+    // Load original image
+    const originalImg = new Image();
+    await new Promise((resolve, reject) => {
+      originalImg.onload = resolve;
+      originalImg.onerror = reject;
+      originalImg.src = originalImage!;
+    });
+
+    canvas.width = originalImg.width;
+    canvas.height = originalImg.height;
+
+    // Draw original image
+    ctx.drawImage(originalImg, 0, 0);
+
+    // Create mask overlay if provided
+    if (maskCanvas || maskDataURL) {
+      const maskImg = new Image();
+      const maskSrc = maskDataURL || maskCanvas!.toDataURL();
+      
+      await new Promise((resolve, reject) => {
+        maskImg.onload = resolve;
+        maskImg.onerror = reject;
+        maskImg.src = maskSrc;
+      });
+
+      // Create a temporary canvas for the green overlay
+      const overlayCanvas = document.createElement('canvas');
+      const overlayCtx = overlayCanvas.getContext('2d');
+      
+      if (overlayCtx) {
+        overlayCanvas.width = canvas.width;
+        overlayCanvas.height = canvas.height;
+
+        // Draw the mask
+        overlayCtx.drawImage(maskImg, 0, 0, overlayCanvas.width, overlayCanvas.height);
+
+        // Get image data and convert mask areas to exact green (#BCF473)
+        const imageData = overlayCtx.getImageData(0, 0, overlayCanvas.width, overlayCanvas.height);
+        const data = imageData.data;
+
+        for (let i = 0; i < data.length; i += 4) {
+          const a = data[i + 3];
+
+          // If pixel has ANY opacity (is part of the mask)
+          if (a > 10) {
+            // Convert to EXACT green overlay #BCF473 (RGB: 188, 244, 115) with full opacity
+            data[i] = 188;     // R = 0xBC
+            data[i + 1] = 244; // G = 0xF4
+            data[i + 2] = 115; // B = 0x73
+            data[i + 3] = 255; // Full opacity for reliable detection
+          } else {
+            // Make fully transparent
+            data[i + 3] = 0;
+          }
+        }
+
+        overlayCtx.putImageData(imageData, 0, 0);
+
+        // Draw the green overlay on top of the original image
+        ctx.drawImage(overlayCanvas, 0, 0);
+      }
+    }
+
+    // Convert canvas to blob
+    return new Promise((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (blob) {
+          resolve(blob);
+        } else {
+          reject(new Error("Failed to create blob from canvas"));
+        }
+      }, 'image/png');
+    });
+  };
+
   // Complete prepareSubmissionData function
   const prepareSubmissionData = async (): Promise<FormData> => {
     const formData = new FormData();
   
-    // Add the original image
+    // Add the original image (keeping for backward compatibility)
     try {
       const response = await fetch(originalImage);
       const blob = await response.blob();
@@ -387,24 +471,24 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     // Handle FreeMark mode - ENHANCED: Direct canvas capture for both timeframes
     if (currentSettings.isFreeMark && drawCanvasRef.current) {
       console.log("📊 FreeMark mode: Capturing masks directly from canvas and stored data");
-      
+
       const currentTimeframe = currentSettings.densityTimeframe || "3months";
       const canvas = drawCanvasRef.current;
       const ctx = canvas.getContext('2d');
-      
+
       // Check if current canvas has content
       let hasCurrentCanvasContent = false;
       if (ctx) {
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         hasCurrentCanvasContent = !imageData.data.every(x => x === 0);
       }
-      
+
       console.log(`🔍 Current timeframe: ${currentTimeframe}, Canvas has content: ${hasCurrentCanvasContent}`);
-      
+
       // Capture current canvas as the current timeframe mask
       if (hasCurrentCanvasContent) {
         const whiteMaskDataURL = convertToWhiteMask(canvas);
-        
+
         // Convert to blob and add as current timeframe mask
         const maskBlob = dataURLToBlob(whiteMaskDataURL);
         formData.append(`mask_${currentTimeframe}`, maskBlob, `mask_${currentTimeframe}.png`);
@@ -414,11 +498,13 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
           dataURLLength: whiteMaskDataURL.length
         });
       }
-      
+
       // Add the other timeframe mask from stored settings
       const otherTimeframe = currentTimeframe === "3months" ? "8months" : "3months";
       const otherMaskData = currentSettings[`canvasDrawing_${otherTimeframe}`];
-      
+
+      console.log(`🔍 Looking for stored ${otherTimeframe} mask:`, otherMaskData ? "FOUND" : "NOT FOUND");
+
       if (otherMaskData) {
         try {
           const otherCanvas = document.createElement('canvas');
@@ -430,11 +516,11 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
               img.onerror = reject;
               img.src = otherMaskData;
             });
-            
+
             otherCanvas.width = img.width;
             otherCanvas.height = img.height;
             otherCtx.drawImage(img, 0, 0);
-            
+
             await new Promise<void>((resolve) => {
               otherCanvas.toBlob((blob) => {
                 if (blob) {
@@ -521,6 +607,86 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         }
       }
     }
+  
+    // ============ CREATE AND ADD REQUIRED IMAGE_3MONTHS AND IMAGE_8MONTHS ============
+    console.log("📦 Creating combined images for backend...");
+    
+    try {
+      if (!currentSettings.isFreeMark) {
+        // ===== HAIRLINE MODE: Same image for both months =====
+        console.log("🔹 Hairline mode: Creating single combined image for both timeframes");
+        
+        // Get the hairline pattern canvas/mask
+        const patternCanvas = document.querySelector('canvas[data-hairline-pattern="true"]') as HTMLCanvasElement;
+        
+        // Create one combined image
+        const combinedBlob = await createCombinedImage(patternCanvas);
+        
+        // Use the same image for both 3 months and 8 months
+        formData.append("image_3months", combinedBlob, "combined_3months.png");
+        formData.append("image_8months", combinedBlob, "combined_8months.png");
+        
+        console.log("✅ Hairline: Added same combined image for both timeframes");
+        
+      } else if (currentSettings.isFreeMark) {
+        // ===== FREEMARK MODE: Separate combined images for each timeframe =====
+        console.log("🔹 FreeMark mode: Creating separate combined images for each timeframe");
+
+        // Create combined image for 3months timeframe
+        let combined3MBlob: Blob | null = null;
+        if (currentSettings.canvasDrawing_3months) {
+          try {
+            console.log("✅ FreeMark 3months: Creating combined image with mask");
+            combined3MBlob = await createCombinedImage(null, currentSettings.canvasDrawing_3months);
+          } catch (error) {
+            console.error("Error creating 3months combined image:", error);
+          }
+        }
+
+        if (combined3MBlob) {
+          formData.append("image_3months", combined3MBlob, "combined_3months.png");
+          console.log("✅ FreeMark: Added 3months combined image with mask");
+        } else {
+          console.warn("⚠️ FreeMark 3months: No mask available, creating combined image without mask");
+          const combined3MNoMask = await createCombinedImage(null);
+          formData.append("image_3months", combined3MNoMask, "combined_3months_nomask.png");
+        }
+
+        // Create combined image for 8months timeframe
+        let combined8MBlob: Blob | null = null;
+        if (currentSettings.canvasDrawing_8months) {
+          try {
+            console.log("✅ FreeMark 8months: Creating combined image with mask");
+            combined8MBlob = await createCombinedImage(null, currentSettings.canvasDrawing_8months);
+          } catch (error) {
+            console.error("Error creating 8months combined image:", error);
+          }
+        }
+
+        if (combined8MBlob) {
+          formData.append("image_8months", combined8MBlob, "combined_8months.png");
+          console.log("✅ FreeMark: Added 8months combined image with mask");
+        } else {
+          console.warn("⚠️ FreeMark 8months: No mask available, creating combined image without mask");
+          const combined8MNoMask = await createCombinedImage(null);
+          formData.append("image_8months", combined8MNoMask, "combined_8months_nomask.png");
+        }
+      }
+    } catch (error) {
+      console.error("❌ Error creating combined images:", error);
+      // Fallback: send original image for both if combined image creation fails
+      try {
+        const response = await fetch(originalImage);
+        const blob = await response.blob();
+        formData.append("image_3months", blob, "original_3months.jpg");
+        formData.append("image_8months", blob, "original_8months.jpg");
+        console.log("⚠️ Fallback: Using original image for both timeframes");
+      } catch (fallbackError) {
+        console.error("❌ Fallback also failed:", fallbackError);
+        throw new Error("Failed to create combined images");
+      }
+    }
+    // ============ END CREATE COMBINED IMAGES ============
   
     return formData;
   };
@@ -1331,9 +1497,17 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
     // Capture current canvas data for FreeMark mode
     if (currentSettings.isFreeMark) {
+      console.log("🔄 SAVE: Starting canvas capture for current timeframe...");
       captureCanvasDataEnhanced();
-      await new Promise(resolve => setTimeout(resolve, 200));
-      console.log("✅ FreeMark canvas capture completed - proceeding with save");
+      await new Promise(resolve => setTimeout(resolve, 300)); // Increased delay
+      console.log("✅ SAVE: FreeMark canvas capture completed - proceeding with save");
+
+      // Debug: Check what data we have after capture
+      console.log("🔍 SAVE: Current settings after capture:");
+      console.log("  - canvasDrawing_3months:", currentSettings.canvasDrawing_3months ? "EXISTS" : "MISSING");
+      console.log("  - canvasDrawing_8months:", currentSettings.canvasDrawing_8months ? "EXISTS" : "MISSING");
+      console.log("  - canvasDrawing_3months_original:", currentSettings.canvasDrawing_3months_original ? "EXISTS" : "MISSING");
+      console.log("  - canvasDrawing_8months_original:", currentSettings.canvasDrawing_8months_original ? "EXISTS" : "MISSING");
     }
 
     // Prepare submission data
@@ -1344,6 +1518,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       return;
     }
 
+    console.log("📤 SAVE: Sending data to backend...");
     // Send to save endpoint
     const response = await fetch("http://localhost:8000/save-settings", {
       method: "POST",
@@ -1356,14 +1531,14 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     }
 
     const result = await response.json();
-    console.log("Settings saved:", result);
+    console.log("✅ SAVE: Settings saved successfully:", result);
     
     // Close modal and return to main page
     setModalImage(null);
     alert("Settings saved successfully!");
 
   } catch (error) {
-    console.error("Error saving settings:", error);
+    console.error("❌ SAVE: Error saving settings:", error);
     alert(`Error saving settings: ${(error as Error).message}`);
   } finally {
     setIsGenerating(false);  // Reset loading state whether save succeeded or failed

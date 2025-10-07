@@ -16,7 +16,7 @@ export const useDrawing = (currentSettings: ImageSettings) => {
     if (!canvas) return;
 
     const currentState = canvas.toDataURL();
-    setHistory((prev) => [...prev, currentState]);
+    setHistory((prev) => [...prev, currentState]);            
     setRedoStack([]);
   }, []);
 
