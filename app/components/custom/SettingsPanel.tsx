@@ -374,7 +374,125 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     });
   };
 
-  // Complete prepareSubmissionData function
+  const hexToColorName = (hex: string): string => {
+    try {
+      // Remove # and normalize
+      hex = hex.replace(/^#/, '');
+      if (hex.length === 3) {
+        hex = hex.split('').map(c => c + c).join('');
+      }
+      
+      const r = parseInt(hex.substring(0, 2), 16);
+      const g = parseInt(hex.substring(2, 4), 16);
+      const b = parseInt(hex.substring(4, 6), 16);
+      
+      // Convert RGB to HSL
+      const rNorm = r / 255;
+      const gNorm = g / 255;
+      const bNorm = b / 255;
+      
+      const max = Math.max(rNorm, gNorm, bNorm);
+      const min = Math.min(rNorm, gNorm, bNorm);
+      const diff = max - min;
+      
+      let h = 0, s = 0;
+      const l = (max + min) / 2;
+      
+      if (diff !== 0) {
+        s = l > 0.5 ? diff / (2 - max - min) : diff / (max + min);
+        
+        switch (max) {
+          case rNorm: h = ((gNorm - bNorm) / diff + (gNorm < bNorm ? 6 : 0)) / 6; break;
+          case gNorm: h = ((bNorm - rNorm) / diff + 2) / 6; break;
+          case bNorm: h = ((rNorm - gNorm) / diff + 4) / 6; break;
+        }
+      }
+      
+      const hue = Math.round(h * 360);
+      const sat = Math.round(s * 100);
+      const light = Math.round(l * 100);
+      
+      // Special cases
+      if (r === 0 && g === 0 && b === 0) return "Black";
+      if (r === 255 && g === 255 && b === 255) return "White";
+      if (light < 10 && sat < 5) return "Nearly Black";
+      if (light > 95 && sat < 5) return "Nearly White";
+      if (sat < 5 && light >= 10 && light < 30) return "Charcoal";
+      if (sat < 5 && light >= 30 && light < 50) return "Dark Gray";
+      if (sat < 5 && light >= 50 && light < 70) return "Gray";
+      if (sat < 5 && light >= 70 && light < 85) return "Light Gray";
+      if (sat < 5 && light >= 85 && light <= 95) return "Silver";
+      
+      // Browns
+      if (hue >= 20 && hue <= 50 && sat >= 20 && sat <= 60 && light >= 20 && light <= 45) {
+        if (light < 30) return "Dark Brown";
+        if (light < 40) return "Brown";
+        return "Light Brown";
+      }
+      
+      // Hair colors
+      if (hue >= 20 && hue <= 60) {
+        if (sat >= 15 && sat <= 40 && light >= 75 && light <= 90) return "Blonde";
+        if (sat >= 40 && sat <= 70 && light >= 60 && light <= 80) return "Golden";
+        if (sat >= 20 && sat <= 50 && light >= 30 && light <= 50) return "Auburn";
+      }
+      
+      // Special colors
+      if ((hue >= 345 || hue <= 15) && sat >= 60) {
+        if (light < 30) return "Dark Red";
+        if (light >= 60) return "Pink";
+        return "Red";
+      }
+      if (hue >= 90 && hue <= 150 && sat >= 50) {
+        if (light < 30) return "Dark Green";
+        if (light >= 70) return "Mint";
+        return "Green";
+      }
+      if (hue >= 200 && hue <= 240 && sat >= 50) {
+        if (light < 30) return "Navy";
+        if (light >= 70) return "Sky Blue";
+        return "Blue";
+      }
+      if (hue >= 270 && hue <= 300 && sat >= 40) {
+        if (light < 30) return "Deep Purple";
+        if (light >= 70) return "Lavender";
+        return "Purple";
+      }
+      
+      // Build descriptive name
+      const parts: string[] = [];
+      
+      // Lightness
+      if (light < 10) parts.push("Very Dark");
+      else if (light < 25) parts.push("Dark");
+      else if (light >= 75 && light < 90) parts.push("Light");
+      else if (light >= 90) parts.push("Very Light");
+      
+      // Saturation
+      if (light >= 15 && light <= 85) {
+        if (sat < 10) parts.push("Grayish");
+        else if (sat < 30) parts.push("Muted");
+        else if (sat >= 70) parts.push("Bright");
+      }
+      
+      // Hue
+      if (sat < 10) parts.push("Gray");
+      else if (hue >= 0 && hue < 15) parts.push("Red");
+      else if (hue >= 15 && hue < 45) parts.push("Orange");
+      else if (hue >= 45 && hue < 75) parts.push("Yellow");
+      else if (hue >= 75 && hue < 135) parts.push("Green");
+      else if (hue >= 135 && hue < 195) parts.push("Cyan");
+      else if (hue >= 195 && hue < 255) parts.push("Blue");
+      else if (hue >= 255 && hue < 315) parts.push("Purple");
+      else if (hue >= 315 && hue < 345) parts.push("Magenta");
+      else parts.push("Red");
+      
+      return parts.join(" ");
+    } catch (error) {
+      return "Unknown Color";
+    }
+  };
+
   const prepareSubmissionData = async (): Promise<FormData> => {
     const formData = new FormData();
   
@@ -387,34 +505,52 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       console.error("Failed to prepare original image:", error);
       return null as any;
     }
+    const hairColorHex = currentSettings.hairColor || "#000000";
+  const hairColorName = hexToColorName(hairColorHex);
   
-    // Add basic form fields with detailed logging
-    const hairColor = currentSettings.hairColor || "#000000";
-    const hairType = currentSettings.enhancedHairTexture ? 
-      currentSettings.enhancedHairTexture.charAt(0).toUpperCase() + currentSettings.enhancedHairTexture.slice(1) + ' Hair' : 
-      "Straight Hair";
-    
-    // CORRECTED: Send the actual selected pattern type
-    const hairLineType = currentSettings.isFreeMark ? "FreeMark" : (currentSettings.hairLineType || "Hairline");
-    const density3M = currentSettings.hairDensity3M || 0.7;
-    const density8M = currentSettings.hairDensity8M || 0.9;
-    const timeframe = currentSettings.densityTimeframe || "3months";
-    
-    console.log("FRONTEND: Sending settings to backend:");
-    console.log("  - Hair Color:", hairColor);
-    console.log("  - Hair Type:", hairType);
-    console.log("  - Hair Line Type:", hairLineType);
-    console.log("  - Density 3M:", density3M);
-    console.log("  - Density 8M:", density8M);
-    console.log("  - Timeframe:", timeframe);
-    
-    formData.append("hair_color", hairColor);
-    formData.append("hair_type", hairType);
-    formData.append("hair_line_type", hairLineType);
-    formData.append("hair_density_3m", density3M.toString());
-    formData.append("hair_density_8m", density8M.toString());
-    formData.append("timeframe", timeframe);
-    formData.append("face_detected", faceDetected.toString());
+  const hairType = currentSettings.enhancedHairTexture ? 
+    currentSettings.enhancedHairTexture.charAt(0).toUpperCase() + currentSettings.enhancedHairTexture.slice(1) + ' Hair' : 
+    "Straight Hair";
+  
+  const hairLineType = currentSettings.isFreeMark ? "FreeMark" : (currentSettings.hairLineType || "Hairline");
+
+  // Get density values with proper defaults (25 for 3M, 50 for 8M as per slider defaults)
+  const density3M = currentSettings.hairDensity3M ?? 25;
+  const density8M = currentSettings.hairDensity8M ?? 50;
+
+  // Convert density values from 1-80 scale to 0-1 scale for backend (send normalized values directly)
+const density3MNormalized = density3M / 80;  // Convert to 0-1 scale
+const density8MNormalized = density8M / 80;  // Convert to 0-1 scale
+
+const timeframe = currentSettings.densityTimeframe || "3months";
+
+console.log("DEBUG - Density values:");
+console.log("  Raw density3M:", density3M, typeof density3M);
+console.log("  Raw density8M:", density8M, typeof density8M);
+console.log("  Normalized density3M:", density3MNormalized, typeof density3MNormalized);
+console.log("  Normalized density8M:", density8MNormalized, typeof density8MNormalized);
+console.log("  String density3M:", density3MNormalized.toString(), typeof density3MNormalized.toString());
+console.log("  String density8M:", density8MNormalized.toString(), typeof density8MNormalized.toString());
+
+// DEBUG: Check if we're sending the right values
+console.log("DEBUG - About to send to backend:");
+console.log("  Sending density3M:", density3MNormalized.toString());
+console.log("  Sending density8M:", density8MNormalized.toString());
+
+// Send normalized values to backend
+formData.append("hair_color", hairColorName);
+formData.append("hair_type", hairType);
+formData.append("hair_line_type", hairLineType);
+formData.append("hair_density_3m", density3MNormalized.toString());  // ← Normalized value
+formData.append("hair_density_8m", density8MNormalized.toString());  // ← Normalized value
+
+console.log("  FormData entries:");
+for (let pair of formData.entries()) {
+  console.log("    ", pair[0] + ': ' + pair[1]);
+}
+
+formData.append("timeframe", timeframe);
+formData.append("face_detected", faceDetected.toString());
   
     // Handle Hairline mode - send hairline pattern if applicable
     if (!currentSettings.isFreeMark) {
