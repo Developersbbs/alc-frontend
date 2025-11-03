@@ -51,7 +51,7 @@ const ImagePreview: React.FC<ImagePreviewProps> = ({
   const [isResizingCircle, setIsResizingCircle] = useState(false);
   const [circleCenterPoint, setCircleCenterPoint] = useState<[number, number] | null>(null);
   const patternCanvasRef = useRef<HTMLCanvasElement>(null);
-
+  const [isProcessing, setIsProcessing] = useState(true); // Start as true to block until face detection is complete
   // Function to get hair color variations based on the selected color from settings
   const getHairColorVariations = (baseColor: string) => {
     if (!baseColor) {
@@ -834,7 +834,12 @@ else if (hairlineDesign === "Z Pattern") {
 
   // UPDATED: Redraw patterns when face is detected or when selection changes
   useEffect(() => {
-    drawHairlinePatterns();
+    if (faceDetectionData) {
+      setIsProcessing(false); // Face detection is complete
+      drawHairlinePatterns();
+    } else {
+      setIsProcessing(true); // Face detection is in progress
+    }
   }, [selectedHairLineType, currentSettings.hairlineDesign, faceDetectionData, currentSettings.isFreeMark, hairlinePoints]);
 
   useEffect(() => {
@@ -851,25 +856,36 @@ else if (hairlineDesign === "Z Pattern") {
       <div className="relative inline-block max-w-full max-h-full lg:w-100">
         {/* Image + Canvas Container */}
         <div className="relative overflow-hidden rounded-lg">
-          <img
-            ref={imageRef}
-            src={modalImage || undefined}
-            alt="Preview"
-            className="max-w-full max-h-[70vh] lg:max-h-[80vh] object-contain block"
-            style={{
-              cursor:
-                isColorPicking && !currentSettings.isFreeMark
-                  ? "crosshair"
-                  : "default",
-            }}
-            onMouseMove={handleImageMouseMove}
-            onClick={handleImageClickForColor}
-            onLoad={() => {
-              setTimeout(() => {
-                setupCanvas();
-              }, 10);
-            }}
-          />
+          <div className="relative">
+            <img
+              ref={imageRef}
+              src={modalImage || undefined}
+              alt="Preview"
+              className={`max-w-full max-h-[70vh] lg:max-h-[80vh] object-contain block ${isProcessing ? 'opacity-50' : ''}`}
+              style={{
+                cursor: isProcessing 
+                  ? 'wait' 
+                  : isColorPicking && !currentSettings.isFreeMark 
+                    ? 'crosshair' 
+                    : 'default',
+                pointerEvents: isProcessing ? 'none' : 'auto'
+              }}
+              onMouseMove={!isProcessing ? handleImageMouseMove : undefined}
+              onClick={!isProcessing ? handleImageClickForColor : undefined}
+              onLoad={() => {
+                setTimeout(() => {
+                  setupCanvas();
+                }, 10);
+              }}
+            />
+            {isProcessing && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                <div className="text-white text-lg font-medium bg-black/70 px-4 py-2 rounded-lg">
+                  Detecting face, please wait...
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* UPDATED: Pattern Overlay Canvas - show when face detected and not in FreeMark mode */}
           {!currentSettings.isFreeMark && faceDetectionData?.face_detection?.face_detected && (
